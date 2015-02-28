@@ -18,7 +18,7 @@ INCLUDE(CheckTypeSize)
 # Version
 set(SLIM_VERSION_MAJOR "1")
 set(SLIM_VERSION_MINOR "3")
-set(SLIM_VERSION_PATCH "4")
+set(SLIM_VERSION_PATCH "5")
 set(SLIM_VERSION "${SLIM_VERSION_MAJOR}.${SLIM_VERSION_MINOR}.${SLIM_VERSION_PATCH}")
 
 set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation Directory")
@@ -170,5 +170,7 @@ install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin )
 install(FILES slim.1 DESTINATION ${MANDIR}/man1/)
 # configure
 install(FILES slim.conf DESTINATION ${SYSCONFDIR})
+# systemd service file
+install(FILES slim.service DESTINATION usr/lib/systemd/system)
 # themes directory
 subdirs(themes)
