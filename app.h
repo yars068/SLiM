@@ -23,8 +23,6 @@
 #include "panel.h"
 #include "cfg.h"
 
-using namespace std;
-
 class App {
 public:
     App(int argc, char** argv);
@@ -32,7 +30,7 @@ public:
     void Run();
     int GetServerPID();
     void StopServer();
-
+	
     // Lock functions
     void GetLock();
     void RemoveLock();
@@ -45,15 +43,18 @@ private:
     void Console();
     void Exit();
     void KillAllClients(Bool top);
+    void RestartServer();
     void ReadConfig();
     void OpenLog();
     void CloseLog();
     void HideCursor();
-
+    void CreateServerAuth();
+    char* StrConcat(const char* str1, const char* str2);
+ 
     static std::string findValidRandomTheme(const std::string& set);
-    static void App::replaceVariables(std::string& input,
-				      const std::string& var,
-				      const std::string& value);
+    static void replaceVariables(std::string& input,
+                                 const std::string& var,
+                                 const std::string& value);
 
     // Server functions
     int StartServer();
@@ -76,7 +77,7 @@ private:
     XpmAttributes BackgroundPixmapAttributes;
     Pixmap BackgroundPixmap;
 
-    void App::blankScreen();
+    void blankScreen();
     void setBackground(const string& themedir);
 	
     bool daemonmode;
@@ -85,7 +86,7 @@ private:
     bool testing;
     
     std::string themeName;
-
+    std::string mcookie;
 };
 
 
