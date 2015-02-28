@@ -30,6 +30,8 @@
 #include <shadow.h>
 #endif
 
+using namespace std;
+
 #ifdef USE_PAM
 #include <string>
 
@@ -135,10 +137,14 @@ App::App(int argc, char** argv){
     ServerPID = -1;
     testing = false;
     mcookie = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    daemonmode = false;
+    force_nodaemon = false;
+    firstlogin = true;
     Dpy = NULL;
 
     // Parse command line
-    while((tmp = getopt(argc, argv, "vhp:d?")) != EOF) {
+    // Note: we force a option for nodaemon switch to handle "-nodaemon"
+    while((tmp = getopt(argc, argv, "vhp:n:d?")) != EOF) {
         switch (tmp) {
         case 'p':    // Test theme
             testtheme = optarg;
@@ -151,6 +157,10 @@ App::App(int argc, char** argv){
         case 'd':    // Daemon mode
             daemonmode = true;
             break;
+        case 'n':    // Daemon mode
+            daemonmode = false;
+            force_nodaemon = true;
+            break;
         case 'v':    // Version
             std::cout << APPNAME << " version " << VERSION << endl;
             exit(OK_EXIT);
@@ -161,6 +171,7 @@ App::App(int argc, char** argv){
             cerr << "usage:  " << APPNAME << " [option ...]" << endl
             << "options:" << endl
             << "    -d: daemon mode" << endl
+            << "    -nodaemon: no-daemon mode" << endl
             << "    -v: show version" << endl
             << "    -p /path/to/theme/dir: preview theme" << endl;
             exit(OK_EXIT);
@@ -261,7 +272,7 @@ void App::Run() {
 #ifndef XNEST_DEBUG
         OpenLog();
         
-        if (cfg->getOption("daemon") == "yes") {
+        if (!force_nodaemon && cfg->getOption("daemon") == "yes") {
             daemonmode = true;
         }
 
@@ -296,7 +307,7 @@ void App::Run() {
     // for tests we use a standard window
     if (testing) {
         Window RealRoot = RootWindow(Dpy, Scr);
-        Root = XCreateSimpleWindow(Dpy, RealRoot, 0, 0, 640, 480, 0, 0, 0);
+        Root = XCreateSimpleWindow(Dpy, RealRoot, 0, 0, 1280, 1024, 0, 0, 0);
         XMapWindow(Dpy, Root);
         XFlush(Dpy);
     } else {
@@ -307,11 +318,23 @@ void App::Run() {
 
     // Create panel
     LoginPanel = new Panel(Dpy, Scr, Root, cfg, themedir);
-
+    bool firstloop = true; // 1st time panel is shown (for automatic username)
+    bool focuspass = cfg->getOption("focus_password")=="yes";
+    bool autologin = cfg->getOption("auto_login")=="yes";
+    
+    if (firstlogin && cfg->getOption("default_user") != "") {
+        LoginPanel->SetName(cfg->getOption("default_user") );
+        #ifdef USE_PAM
+	pam.set_item(PAM::Authenticator::User, cfg->getOption("default_user").c_str());
+	#endif
+        firstlogin = false;
+        if (autologin) {
+            Login();
+        }
+    }
     // Start looping
     int panelclosed = 1;
     Panel::ActionType Action;
-    bool firstloop = true; // 1st time panel is shown (for automatic username)
 
     while(1) {
         if(panelclosed) {
@@ -329,19 +352,22 @@ void App::Run() {
         }
 
         LoginPanel->Reset();
+	
+	
         if (firstloop && cfg->getOption("default_user") != "") {
             LoginPanel->SetName(cfg->getOption("default_user") );
-            firstloop = false;
         }
 
 
-        if (!AuthenticateUser()){
+        if (!AuthenticateUser(focuspass && firstloop)){
             panelclosed = 0;
+            firstloop = false;
             LoginPanel->ClearPanel();
             XBell(Dpy, 100);
             continue;
         }
-        
+	
+	firstloop = false;
 
         Action = LoginPanel->getAction();
         // for themes test we just quit
@@ -375,10 +401,11 @@ void App::Run() {
 }
 
 #ifdef USE_PAM
-bool App::AuthenticateUser(void){
+bool App::AuthenticateUser(bool focuspass){
     // Reset the username
     try{
-        pam.set_item(PAM::Authenticator::User, 0);
+        if (!focuspass)
+		    pam.set_item(PAM::Authenticator::User, 0);
         pam.authenticate();
     }
     catch(PAM::Auth_Exception& e){
@@ -399,16 +426,18 @@ bool App::AuthenticateUser(void){
     return true;
 }
 #else
-bool App::AuthenticateUser(void){
-    LoginPanel->EventHandler(Panel::Get_Name);
-    switch(LoginPanel->getAction()){
-        case Panel::Exit:
-        case Panel::Console:
-            cerr << APPNAME << ": Got a special command (" << LoginPanel->GetName() << ")" << endl;
-            return true; // <--- This is simply fake!
-        default:
-            break;
-    };
+bool App::AuthenticateUser(bool focuspass){
+    if (!focuspass){
+        LoginPanel->EventHandler(Panel::Get_Name);
+        switch(LoginPanel->getAction()){
+            case Panel::Exit:
+            case Panel::Console:
+                cerr << APPNAME << ": Got a special command (" << LoginPanel->GetName() << ")" << endl;
+                return true; // <--- This is simply fake!
+            default:
+                break;
+        }
+    }
     LoginPanel->EventHandler(Panel::Get_Passwd);
     
     char *encrypted, *correct;
@@ -701,7 +730,7 @@ void App::Exit() {
 #endif
 
     if (testing) {
-        char* testmsg = "This is a test message :-)";
+        const char* testmsg = "This is a test message :-)";
         LoginPanel->Message(testmsg);
         sleep(3);
         delete LoginPanel;
@@ -804,7 +833,7 @@ int App::WaitForServer() {
         if((Dpy = XOpenDisplay(DisplayName))) {
             return 1;
         } else {
-            if(!ServerTimeout(1, "X server to begin accepting connections"))
+            if(!ServerTimeout(1, (char *) "X server to begin accepting connections"))
                 break;
         }
     }
@@ -858,7 +887,7 @@ int App::StartServer() {
     }
 
     if (!hasVtSet && daemonmode) {
-        server[argc++] = "vt07";
+        server[argc++] = (char*)"vt07";
     }
     server[argc] = NULL;
 
@@ -880,7 +909,7 @@ int App::StartServer() {
 
     default:
         errno = 0;
-        if(!ServerTimeout(0, "")) {
+        if(!ServerTimeout(0, (char *)"")) {
             ServerPID = -1;
             break;
         }
@@ -953,7 +982,7 @@ void App::StopServer() {
     }
 
     // Wait for server to shut down
-    if(!ServerTimeout(10, "X server to shut down")) {
+    if(!ServerTimeout(10, (char *)"X server to shut down")) {
         cerr << endl;
         return;
     }
@@ -968,7 +997,7 @@ void App::StopServer() {
     }
 
     // Wait for server to die
-    if(ServerTimeout(3, "server to die")) {
+    if(ServerTimeout(3, (char*)"server to die")) {
         cerr << endl << APPNAME << ": can't kill server" << endl;
         exit(ERR_EXIT);
     }
@@ -1137,7 +1166,7 @@ void App::CreateServerAuth() {
     int hexcount = 0;
         string authfile;
     string cmd;
-    char *digits = "0123456789abcdef";
+    const char *digits = "0123456789abcdef";
         srand( time(NULL) );
     for ( i = 0; i < 31; i++ ) {
         r = rand()%16;

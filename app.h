@@ -57,7 +57,7 @@ private:
     char* StrConcat(const char* str1, const char* str2);
     void UpdatePid();
 
-    bool AuthenticateUser(void);
+    bool AuthenticateUser(bool focuspass);
  
     static std::string findValidRandomTheme(const std::string& set);
     static void replaceVariables(std::string& input,
@@ -75,7 +75,7 @@ private:
     int Scr;
     Panel* LoginPanel;
     int ServerPID;
-    char* DisplayName;
+    const char* DisplayName;
 
 #ifdef USE_PAM
 	PAM::Authenticator pam;
@@ -90,9 +90,11 @@ private:
 
     void blankScreen();
     Image* image;
-    void setBackground(const string& themedir);
-	
+    void setBackground(const std::string& themedir);
+
+    bool firstlogin;
     bool daemonmode;
+    bool force_nodaemon;
 	// For testing themes
 	char* testtheme;
     bool testing;

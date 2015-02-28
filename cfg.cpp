@@ -12,6 +12,7 @@
 #include <string>
 #include <iostream>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -27,22 +28,25 @@ Cfg::Cfg()
     : currentSession(-1)
 {
     // Configuration options
-    options.insert(option("default_path","./:/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin"));
-    options.insert(option("default_xserver","/usr/X11R6/bin/X"));
+    options.insert(option("default_path","./:/bin:/usr/bin:/usr/local/bin"));
+    options.insert(option("default_xserver","/usr/bin/X"));
     options.insert(option("xserver_arguments",""));
     options.insert(option("numlock",""));
     options.insert(option("daemon",""));
-    options.insert(option("xauth_path","/usr/X11R6/bin/xauth"));
+    options.insert(option("xauth_path","/usr/bin/xauth"));
     options.insert(option("login_cmd","exec /bin/bash -login ~/.xinitrc %session"));
     options.insert(option("halt_cmd","/sbin/shutdown -h now"));
     options.insert(option("reboot_cmd","/sbin/shutdown -r now"));
     options.insert(option("suspend_cmd",""));
     options.insert(option("sessionstart_cmd",""));
     options.insert(option("sessionstop_cmd",""));
-    options.insert(option("console_cmd","/usr/X11R6/bin/xterm -C -fg white -bg black +sb -g %dx%d+%d+%d -fn %dx%d -T ""Console login"" -e /bin/sh -c ""/bin/cat /etc/issue; exec /bin/login"""));
+    options.insert(option("console_cmd","/usr/bin/xterm -C -fg white -bg black +sb -g %dx%d+%d+%d -fn %dx%d -T ""Console login"" -e /bin/sh -c ""/bin/cat /etc/issue; exec /bin/login"""));
     options.insert(option("screenshot_cmd","import -window root /slim.png"));
     options.insert(option("welcome_msg","Welcome to %host"));
+    options.insert(option("session_msg","Session:"));
     options.insert(option("default_user",""));
+    options.insert(option("focus_password","no"));
+    options.insert(option("auto_login","no"));
     options.insert(option("current_theme","default"));
     options.insert(option("lockfile","/var/run/slim.lock"));
     options.insert(option("logfile","/var/log/slim.log"));
@@ -106,6 +110,15 @@ Cfg::Cfg()
     options.insert(option("msg_shadow_xoffset", "0"));
     options.insert(option("msg_shadow_yoffset", "0"));
     options.insert(option("msg_shadow_color","#FFFFFF"));
+    
+
+    options.insert(option("session_color","#FFFFFF"));
+    options.insert(option("session_font","Verdana:size=16:bold"));
+    options.insert(option("session_x","50%"));
+    options.insert(option("session_y","90%"));
+    options.insert(option("session_shadow_xoffset", "0"));
+    options.insert(option("session_shadow_yoffset", "0"));
+    options.insert(option("session_shadow_color","#FFFFFF"));
 
     error = "";
 
