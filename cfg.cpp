@@ -229,6 +229,10 @@ int Cfg::string2int(const char* string, bool* ok) {
     return (*err == 0) ? l : 0;
 }
 
+int Cfg::getIntOption(std::string option) {
+    return string2int(options[option].c_str());
+}
+
 // Get absolute position
 int Cfg::absolutepos(const string& position, int max, int width) {
     int n = -1;

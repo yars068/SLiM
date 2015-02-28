@@ -10,6 +10,7 @@
 */
 
 #include <sstream>
+#include <poll.h>
 #include "panel.h"
 
 using namespace std;
@@ -57,14 +58,12 @@ Panel::Panel(Display* dpy, int scr, Window root, Cfg* config,
                       cfg->getOption("session_shadow_color").c_str(), &sessionshadowcolor);
 
     // Load properties from config / theme
-    input_name_x = Cfg::string2int(cfg->getOption("input_name_x").c_str());
-    input_name_y = Cfg::string2int(cfg->getOption("input_name_y").c_str());
-    input_pass_x = Cfg::string2int(cfg->getOption("input_pass_x").c_str());
-    input_pass_y = Cfg::string2int(cfg->getOption("input_pass_y").c_str());
-    inputShadowXOffset =
-        Cfg::string2int(cfg->getOption("input_shadow_xoffset").c_str());
-    inputShadowYOffset =
-        Cfg::string2int(cfg->getOption("input_shadow_yoffset").c_str());
+    input_name_x = cfg->getIntOption("input_name_x");
+    input_name_y = cfg->getIntOption("input_name_y");
+    input_pass_x = cfg->getIntOption("input_pass_x");
+    input_pass_y = cfg->getIntOption("input_pass_y");
+    inputShadowXOffset = cfg->getIntOption("input_shadow_xoffset");
+    inputShadowYOffset = cfg->getIntOption("input_shadow_yoffset");
 
     if (input_pass_x < 0 || input_pass_y < 0){ // single inputbox mode
         input_pass_x = input_name_x;
@@ -205,11 +204,8 @@ void Panel::Message(const string& text) {
                     text.length(), &extents);
     cfgX = cfg->getOption("msg_x");
     cfgY = cfg->getOption("msg_y");
-    int shadowXOffset =
-        Cfg::string2int(cfg->getOption("msg_shadow_xoffset").c_str());
-    int shadowYOffset =
-        Cfg::string2int(cfg->getOption("msg_shadow_yoffset").c_str());
-
+    int shadowXOffset = cfg->getIntOption("msg_shadow_xoffset");
+    int shadowYOffset = cfg->getIntOption("msg_shadow_yoffset");
     int msg_x = Cfg::absolutepos(cfgX, XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)), extents.width);
     int msg_y = Cfg::absolutepos(cfgY, XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)), extents.height);
 
@@ -288,16 +284,24 @@ void Panel::EventHandler(const Panel::FieldType& curfield) {
     field=curfield;
     bool loop = true;
     OnExpose();
-    while(loop) {
-        XNextEvent(Dpy, &event);
-        switch(event.type) {
-            case Expose:
-                OnExpose();
-                break;
 
-            case KeyPress:
-                loop=OnKeyPress(event);
-                break;
+    struct pollfd x11_pfd = {0};
+    x11_pfd.fd = ConnectionNumber(Dpy);
+    x11_pfd.events = POLLIN;
+    while(loop) {
+        if(XPending(Dpy) || poll(&x11_pfd, 1, -1) > 0) {
+            while(XPending(Dpy)) {
+                XNextEvent(Dpy, &event);
+                switch(event.type) {
+                    case Expose:
+                        OnExpose();
+                        break;
+
+                    case KeyPress:
+                        loop=OnKeyPress(event);
+                        break;
+                }
+            }
         }
     }
 
@@ -506,10 +510,9 @@ void Panel::ShowText(){
                     strlen(welcome_message.c_str()), &extents);
     cfgX = cfg->getOption("welcome_x");
     cfgY = cfg->getOption("welcome_y");
-    int shadowXOffset =
-        Cfg::string2int(cfg->getOption("welcome_shadow_xoffset").c_str());
-    int shadowYOffset =
-        Cfg::string2int(cfg->getOption("welcome_shadow_yoffset").c_str());
+    int shadowXOffset = cfg->getIntOption("welcome_shadow_xoffset");
+    int shadowYOffset = cfg->getIntOption("welcome_shadow_yoffset");
+
     welcome_x = Cfg::absolutepos(cfgX, image->Width(), extents.width);
     welcome_y = Cfg::absolutepos(cfgY, image->Height(), extents.height);
     if (welcome_x >= 0 && welcome_y >= 0) {
@@ -527,10 +530,8 @@ void Panel::ShowText(){
                         strlen(msg.c_str()), &extents);
         cfgX = cfg->getOption("password_x");
         cfgY = cfg->getOption("password_y");
-        int shadowXOffset =
-            Cfg::string2int(cfg->getOption("username_shadow_xoffset").c_str());
-        int shadowYOffset =
-            Cfg::string2int(cfg->getOption("username_shadow_yoffset").c_str());
+        int shadowXOffset = cfg->getIntOption("username_shadow_xoffset");
+        int shadowYOffset = cfg->getIntOption("username_shadow_yoffset");
         password_x = Cfg::absolutepos(cfgX, image->Width(), extents.width);
         password_y = Cfg::absolutepos(cfgY, image->Height(), extents.height);
         if (password_x >= 0 && password_y >= 0){
@@ -544,10 +545,8 @@ void Panel::ShowText(){
                         strlen(msg.c_str()), &extents);
         cfgX = cfg->getOption("username_x");
         cfgY = cfg->getOption("username_y");
-        int shadowXOffset =
-            Cfg::string2int(cfg->getOption("username_shadow_xoffset").c_str());
-        int shadowYOffset =
-            Cfg::string2int(cfg->getOption("username_shadow_yoffset").c_str());
+        int shadowXOffset = cfg->getIntOption("username_shadow_xoffset");
+        int shadowYOffset = cfg->getIntOption("username_shadow_yoffset");
         username_x = Cfg::absolutepos(cfgX, image->Width(), extents.width);
         username_y = Cfg::absolutepos(cfgY, image->Height(), extents.height);
         if (username_x >= 0 && username_y >= 0){
@@ -587,10 +586,8 @@ void Panel::ShowSession() {
     msg_y = cfg->getOption("session_y");
     int x = Cfg::absolutepos(msg_x, XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)), extents.width);
     int y = Cfg::absolutepos(msg_y, XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)), extents.height);
-    int shadowXOffset =
-        Cfg::string2int(cfg->getOption("session_shadow_xoffset").c_str());
-    int shadowYOffset =
-        Cfg::string2int(cfg->getOption("session_shadow_yoffset").c_str());
+    int shadowXOffset = cfg->getIntOption("session_shadow_xoffset");
+    int shadowYOffset = cfg->getIntOption("session_shadow_yoffset");
 
     SlimDrawString8(draw, &sessioncolor, sessionfont, x, y,
                     currsession, 
@@ -613,11 +610,9 @@ void Panel::SlimDrawString8(XftDraw *d, XftColor *color, XftFont *font,
     XftDrawString8(d, color, font, x, y, reinterpret_cast<const FcChar8*>(str.c_str()), str.length());
 }
 
-
 Panel::ActionType Panel::getAction(void) const{
     return action;
 };
-
 
 void Panel::Reset(void){
     ResetName();
@@ -635,11 +630,13 @@ void Panel::ResetPasswd(void){
 
 void Panel::SetName(const string& name){
     NameBuffer=name;
-    return;
+    action = Login;
 };
+
 const string& Panel::GetName(void) const{
     return NameBuffer;
 };
+
 const string& Panel::GetPasswd(void) const{
     return PasswdBuffer;
 };

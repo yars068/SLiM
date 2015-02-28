@@ -104,28 +104,20 @@ int conv(int num_msg, const struct pam_message **msg,
 
 extern App* LoginApp;
 
+int xioerror(Display *disp) {
+	LoginApp->RestartServer();
+    return 0;
+}
+
 void CatchSignal(int sig) {
     cerr << APPNAME << ": unexpected signal " << sig << endl;
 
-    if (LoginApp->serverStarted)
+    if (LoginApp->isServerStarted())
         LoginApp->StopServer();
 
     LoginApp->RemoveLock();
     exit(ERR_EXIT);
 }
-
-
-void AlarmSignal(int sig) {
-    int pid = LoginApp->GetServerPID();
-    if(waitpid(pid, NULL, WNOHANG) == pid) {
-        LoginApp->StopServer();
-        LoginApp->RemoveLock();
-        exit(OK_EXIT);
-    }
-    signal(sig, AlarmSignal);
-    alarm(2);
-}
-
 
 void User1Signal(int sig) {
     signal(sig, User1Signal);
@@ -236,8 +228,6 @@ void App::Run() {
         pam.start("slim");
         pam.set_item(PAM::Authenticator::TTY, DisplayName);
         pam.set_item(PAM::Authenticator::Requestor, "root");
-        pam.set_item(PAM::Authenticator::Host, "localhost");
-
     }
     catch(PAM::Exception& e){
         cerr << APPNAME << ": " << e << endl;
@@ -277,27 +267,27 @@ void App::Run() {
         signal(SIGHUP, CatchSignal);
         signal(SIGPIPE, CatchSignal);
         signal(SIGUSR1, User1Signal);
-        signal(SIGALRM, AlarmSignal);
 
 #ifndef XNEST_DEBUG
-        OpenLog();
-        
         if (!force_nodaemon && cfg->getOption("daemon") == "yes") {
             daemonmode = true;
         }
 
         // Daemonize
         if (daemonmode) {
-            if (daemon(0, 1) == -1) {
+            if (daemon(0, 0) == -1) {
                 cerr << APPNAME << ": " << strerror(errno) << endl;
                 exit(ERR_EXIT);
             }
-            UpdatePid();
         }
+
+        OpenLog();
+
+        if (daemonmode)
+            UpdatePid();
 
         CreateServerAuth();
         StartServer();
-        alarm(2);
 #endif
 
     }
@@ -551,6 +541,7 @@ void App::Login() {
     try{
         if(term) pam.setenv("TERM", term);
         pam.setenv("HOME", pw->pw_dir);
+        pam.setenv("PWD", pw->pw_dir);
         pam.setenv("SHELL", pw->pw_shell);
         pam.setenv("USER", pw->pw_name);
         pam.setenv("LOGNAME", pw->pw_name);
@@ -565,6 +556,17 @@ void App::Login() {
     }
 #endif
 
+#ifdef USE_CONSOLEKIT
+    // Setup the ConsoleKit session
+    try {
+        ck.open_session(DisplayName, pw->pw_uid);
+    }
+    catch(Ck::Exception &e) {
+        cerr << APPNAME << ": " << e << endl;
+        exit(ERR_EXIT);
+    }
+#endif
+
     // Create new process
     pid = fork();
     if(pid == 0) {
@@ -572,13 +574,35 @@ void App::Login() {
         // Get a copy of the environment and close the child's copy
         // of the PAM-handle.
         char** child_env = pam.getenvlist();
+
+# ifdef USE_CONSOLEKIT
+        char** old_env = child_env;
+
+        // Grow the copy of the environment for the session cookie
+        int n;
+        for(n = 0; child_env[n] != NULL ; n++);
+
+        n++;
+
+        child_env = static_cast<char**>(malloc(sizeof(char*)*n));
+        memcpy(child_env, old_env, sizeof(char*)*n);
+        child_env[n - 1] = StrConcat("XDG_SESSION_COOKIE=", ck.get_xdg_session_cookie());
+        child_env[n] = NULL;
+# endif /* USE_CONSOLEKIT */
+
         pam.end();
 #else
-        const int Num_Of_Variables = 10; // Number of env. variables + 1
+
+# ifdef USE_CONSOLEKIT
+        const int Num_Of_Variables = 12; // Number of env. variables + 1
+# else
+        const int Num_Of_Variables = 11; // Number of env. variables + 1
+# endif /* USE_CONSOLEKIT */
         char** child_env = static_cast<char**>(malloc(sizeof(char*)*Num_Of_Variables));
         int n = 0;
         if(term) child_env[n++]=StrConcat("TERM=", term);
         child_env[n++]=StrConcat("HOME=", pw->pw_dir);
+        child_env[n++]=StrConcat("PWD=", pw->pw_dir);
         child_env[n++]=StrConcat("SHELL=", pw->pw_shell);
         child_env[n++]=StrConcat("USER=", pw->pw_name);
         child_env[n++]=StrConcat("LOGNAME=", pw->pw_name);
@@ -586,7 +610,11 @@ void App::Login() {
         child_env[n++]=StrConcat("DISPLAY=", DisplayName);
         child_env[n++]=StrConcat("MAIL=", maildir.c_str());
         child_env[n++]=StrConcat("XAUTHORITY=", xauthority.c_str());
+# ifdef USE_CONSOLEKIT
+        child_env[n++]=StrConcat("XDG_SESSION_COOKIE=", ck.get_xdg_session_cookie());
+# endif /* USE_CONSOLEKIT */
         child_env[n++]=0;
+
 #endif
 
         // Login process starts here
@@ -613,6 +641,8 @@ void App::Login() {
     int status;
     while (wpid != pid) {
         wpid = wait(&status);
+		if (wpid == ServerPID)
+			xioerror(Dpy);	// Server died, simulate IO error
     }
     if (WIFEXITED(status) && WEXITSTATUS(status)) {
         LoginPanel->Message("Failed to execute login command");
@@ -624,6 +654,15 @@ void App::Login() {
             system(sessStop.c_str());
         }
     }
+
+#ifdef USE_CONSOLEKIT
+    try {
+        ck.close_session();
+    }
+    catch(Ck::Exception &e) {
+        cerr << APPNAME << ": " << e << endl;
+    };
+#endif
 
 #ifdef USE_PAM
     try{
@@ -658,9 +697,6 @@ void App::Login() {
 
 
 void App::Reboot() {
-    // Stop alarm clock
-    alarm(0);
-
 #ifdef USE_PAM
     try{
         pam.end();
@@ -683,9 +719,6 @@ void App::Reboot() {
 
 
 void App::Halt() {
-    // Stop alarm clock
-    alarm(0);
-
 #ifdef USE_PAM
     try{
         pam.end();
@@ -771,6 +804,7 @@ void App::RestartServer() {
 
     StopServer(); 
     RemoveLock();
+	while (waitpid(-1, NULL, WNOHANG) > 0); // Collects all dead childrens
     Run();
 } 
 
@@ -841,6 +875,7 @@ int App::WaitForServer() {
 
     for(cycles = 0; cycles < ncycles; cycles++) {
         if((Dpy = XOpenDisplay(DisplayName))) {
+            XSetIOErrorHandler(xioerror);
             return 1;
         } else {
             if(!ServerTimeout(1, (char *) "X server to begin accepting connections"))
@@ -855,7 +890,7 @@ int App::WaitForServer() {
 
 
 int App::StartServer() {
-    ServerPID = vfork();
+    ServerPID = fork();
 
     static const int MAX_XSERVER_ARGS = 256;
     static char* server[MAX_XSERVER_ARGS+2] = { NULL };
@@ -925,9 +960,6 @@ int App::StartServer() {
             ServerPID = -1;
             break;
         }
-        alarm(15);
-        pause();
-        alarm(0);
 
         // Wait for server to start up
         if(WaitForServer() == 0) {
@@ -941,9 +973,9 @@ int App::StartServer() {
 
     string numlock = cfg->getOption("numlock");
     if (numlock == "on") {
-        NumLock::setOn();
+        NumLock::setOn(Dpy);
     } else if (numlock == "off") {
-        NumLock::setOff();
+        NumLock::setOff(Dpy);
     }
     
     delete args;
@@ -962,15 +994,12 @@ int IgnoreXIO(Display *d) {
 
 
 void App::StopServer() {
-    // Stop alars clock and ignore signals
-    alarm(0);
     signal(SIGQUIT, SIG_IGN);
     signal(SIGINT, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTERM, SIG_DFL);
     signal(SIGKILL, SIG_DFL);
-    signal(SIGALRM, SIG_DFL);
 
     // Catch X error
     XSetIOErrorHandler(IgnoreXIO);
@@ -1107,6 +1136,11 @@ void App::GetLock() {
 // Remove lockfile and close logs
 void App::RemoveLock() {
     remove(cfg->getOption("lockfile").c_str());
+}
+
+// Get server start check flag.
+bool App::isServerStarted() {
+    return serverStarted;
 }
 
 // Redirect stdout and stderr to log file

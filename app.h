@@ -27,6 +27,9 @@
 #ifdef USE_PAM
 #include "PAM.h"
 #endif
+#ifdef USE_CONSOLEKIT
+#include "Ck.h"
+#endif
 
 class App {
 public:
@@ -34,12 +37,14 @@ public:
     ~App();
     void Run();
     int GetServerPID();
+    void RestartServer();
     void StopServer();
 
-	bool serverStarted;
     // Lock functions
     void GetLock();
     void RemoveLock();
+
+    bool isServerStarted();
 
 private:
     void Login();
@@ -49,7 +54,6 @@ private:
     void Console();
     void Exit();
     void KillAllClients(Bool top);
-    void RestartServer();
     void ReadConfig();
     void OpenLog();
     void CloseLog();
@@ -77,9 +81,13 @@ private:
     Panel* LoginPanel;
     int ServerPID;
     const char* DisplayName;
+    bool serverStarted;
 
 #ifdef USE_PAM
 	PAM::Authenticator pam;
+#endif
+#ifdef USE_CONSOLEKIT
+    Ck::Session ck;
 #endif
 
     // Options
