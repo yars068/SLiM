@@ -16,12 +16,12 @@
 #include <stdint.h>
 #include <cstring>
 #include <cstdio>
-
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <algorithm>
+
 #include "app.h"
 #include "numlock.h"
 #include "util.h"
@@ -58,6 +58,8 @@ int conv(int num_msg, const struct pam_message **msg,
 					case Panel::Exit:
 					case Panel::Login:
 						(*resp)[i].resp=strdup(panel->GetName().c_str());
+						break;
+					default:
 						break;
 				}
 				break;
@@ -299,6 +301,9 @@ void App::Run() {
 	Scr = DefaultScreen(Dpy);
 	Root = RootWindow(Dpy, Scr);
 
+	// Intern _XROOTPMAP_ID property
+	BackgroundPixmapId = XInternAtom(Dpy, "_XROOTPMAP_ID", False);
+
 	/* for tests we use a standard window */
 	if (testing) {
 		Window RealRoot = RootWindow(Dpy, Scr);
@@ -312,7 +317,7 @@ void App::Run() {
 	HideCursor();
 
 	/* Create panel */
-	LoginPanel = new Panel(Dpy, Scr, Root, cfg, themedir);
+	LoginPanel = new Panel(Dpy, Scr, Root, cfg, themedir, Panel::Mode_DM);
 	bool firstloop = true; /* 1st time panel is shown (for automatic username) */
 	bool focuspass = cfg->getOption("focus_password")=="yes";
 	bool autologin = cfg->getOption("auto_login")=="yes";
@@ -361,6 +366,9 @@ void App::Run() {
 			LoginPanel->SetName(cfg->getOption("default_user") );
 		}
 
+        if (firstloop) {
+            LoginPanel->SwitchSession();
+        }
 
 		if (!AuthenticateUser(focuspass && firstloop)){
 			panelclosed = 0;
@@ -398,6 +406,8 @@ void App::Run() {
 				break;
 			case Panel::Exit:
 				Exit();
+				break;
+			default:
 				break;
 		}
 	}
@@ -475,7 +485,7 @@ bool App::AuthenticateUser(bool focuspass){
 		return true;
 
 	encrypted = crypt(LoginPanel->GetPasswd().c_str(), correct);
-	return ((strcmp(encrypted, correct) == 0) ? true : false);
+	return ((encrypted && strcmp(encrypted, correct) == 0) ? true : false);
 }
 #endif
 
@@ -967,7 +977,7 @@ int App::StartServer() {
 		break;
 	}
 
-	delete args;
+	delete [] args;
 
 	serverStarted = true;
 
@@ -1052,7 +1062,6 @@ void App::setBackground(const string& themedir) {
 	image = new Image;
 	bool loaded = image->Read(filename.c_str());
 	if (!loaded){ /* try jpeg if png failed */
-		filename = "";
 		filename = themedir + "/background.jpg";
 		loaded = image->Read(filename.c_str());
 	}
@@ -1075,6 +1084,8 @@ void App::setBackground(const string& themedir) {
 		}
 		Pixmap p = image->createPixmap(Dpy, Scr, Root);
 		XSetWindowBackgroundPixmap(Dpy, Root, p);
+		XChangeProperty(Dpy, Root, BackgroundPixmapId, XA_PIXMAP, 32,
+			PropModeReplace, (unsigned char *)&p, 1);
 	}
 	XClearWindow(Dpy, Root);
 

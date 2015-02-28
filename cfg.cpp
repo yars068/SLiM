@@ -1,6 +1,7 @@
 /* SLiM - Simple Login Manager
    Copyright (C) 2004-06 Simone Rota <sip@varlock.com>
    Copyright (C) 2004-06 Johannes Winkelmann <jw@tks6.net>
+   Copyright (C) 2012-13 Nobuhiro Iwamatsu <iwamatsu@nigauri.org>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -53,7 +54,6 @@ Cfg::Cfg()
 	options.insert(option("authfile","/var/run/slim.auth"));
 	options.insert(option("shutdown_msg","The system is halting..."));
 	options.insert(option("reboot_msg","The system is rebooting..."));
-	options.insert(option("sessions","wmaker,blackbox,icewm"));
 	options.insert(option("sessiondir",""));
 	options.insert(option("hidecursor","false"));
 
@@ -119,8 +119,20 @@ Cfg::Cfg()
 	options.insert(option("session_shadow_yoffset", "0"));
 	options.insert(option("session_shadow_color","#FFFFFF"));
 
-	error = "";
+	// slimlock-specific options
+	options.insert(option("dpms_standby_timeout", "60"));
+	options.insert(option("dpms_off_timeout", "600"));
+	options.insert(option("wrong_passwd_timeout", "2"));
+	options.insert(option("passwd_feedback_x", "50%"));
+	options.insert(option("passwd_feedback_y", "10%"));
+	options.insert(option("passwd_feedback_msg", "Authentication failed"));
+	options.insert(option("passwd_feedback_capslock", "Authentication failed (CapsLock is on)"));
+	options.insert(option("show_username", "1"));
+	options.insert(option("show_welcome_msg", "0"));
+	options.insert(option("tty_lock", "1"));
+	options.insert(option("bell", "1"));
 
+	error = "";
 }
 
 Cfg::~Cfg() {
@@ -132,30 +144,43 @@ Cfg::~Cfg() {
  */
 bool Cfg::readConf(string configfile) {
 	int n = -1;
-	string line, fn(configfile);
+	size_t pos = 0;
+	string line, next, op, fn(configfile);
 	map<string,string>::iterator it;
-	string op;
-	ifstream cfgfile( fn.c_str() );
-	if (cfgfile) {
-		while (getline( cfgfile, line )) {
-			it = options.begin();
-			while (it != options.end()) {
-				op = it->first;
-				n = line.find(op);
-				if (n == 0)
-					options[op] = parseOption(line, op);
-				it++;
-			}
-		}
-		cfgfile.close();
+	ifstream cfgfile(fn.c_str());
 
-		fillSessionList();
-
-		return true;
-	} else {
+	if (!cfgfile) {
 		error = "Cannot read configuration file: " + configfile;
 		return false;
 	}
+	while (getline(cfgfile, line)) {
+		if ((pos = line.find('\\')) != string::npos) {
+			if (line.length() == pos + 1) {
+				line.replace(pos, 1, " ");
+				next = next + line;
+				continue;
+			} else
+				line.replace(pos, line.length() - pos, " ");
+		}
+
+		if (!next.empty()) {
+			line = next + line;
+			next = "";
+		}
+		it = options.begin();
+		while (it != options.end()) {
+			op = it->first;
+			n = line.find(op);
+			if (n == 0)
+				options[op] = parseOption(line, op);
+			++it;
+		}
+	}
+	cfgfile.close();
+
+	fillSessionList();
+
+	return true;
 }
 
 /* Returns the option value, trimmed */
@@ -196,8 +221,7 @@ string Cfg::Trim( const string& s ) {
 /* Return the welcome message with replaced vars */
 string Cfg::getWelcomeMessage(){
 	string s = getOption("welcome_msg");
-	int n = -1;
-	n = s.find("%host");
+	int n = s.find("%host");
 	if (n >= 0) {
 		string tmp = s.substr(0, n);
 		char host[40];
@@ -233,8 +257,7 @@ int Cfg::getIntOption(std::string option) {
 
 /* Get absolute position */
 int Cfg::absolutepos(const string& position, int max, int width) {
-	int n = -1;
-	n = position.find("%");
+	int n = position.find("%");
 	if (n>0) { /* X Position expressed in percentage */
 		int result = (max*string2int(position.substr(0, n).c_str())/100) - (width / 2);
 		return result < 0 ? 0 : result ;
@@ -266,7 +289,6 @@ void Cfg::split(vector<string>& v, const string& str, char c, bool useEmpty) {
 }
 
 void Cfg::fillSessionList(){
-	string strSessionList = getOption("sessions");
 	string strSessionDir  = getOption("sessiondir");
 
 	sessions.clear();
@@ -285,9 +307,29 @@ void Cfg::fillSessionList(){
 				struct stat oFileStat;
 
 				if (stat(strFile.c_str(), &oFileStat) == 0) {
-					if (S_ISREG(oFileStat.st_mode) &&
-						access(strFile.c_str(), R_OK | X_OK) == 0) {
-						sessions.push_back(string(pDirent->d_name));
+                    if (S_ISREG(oFileStat.st_mode) &&
+                            access(strFile.c_str(), R_OK) == 0){
+                        ifstream desktop_file( strFile.c_str() );
+                        if (desktop_file){
+                             string line, session_name = "", session_exec = "";
+                             while (getline( desktop_file, line )) {
+                                 if (line.substr(0, 5) == "Name=") {
+                                     session_name = line.substr(5);
+                                     if (!session_exec.empty())
+                                         break;
+                                 } else
+                                     if (line.substr(0, 5) == "Exec=") {
+                                         session_exec = line.substr(5);
+                                         if (!session_name.empty())
+                                             break;
+                                     }
+                             }
+                             desktop_file.close();
+                             pair<string,string> session(session_name,session_exec);
+                             sessions.push_back(session);
+                             cout << session_exec << " - " << session_name << endl;
+                        }
+
 					}
 				}
 			}
@@ -296,14 +338,12 @@ void Cfg::fillSessionList(){
 	}
 
 	if (sessions.empty()){
-		split(sessions, strSessionList, ',', false);
+        pair<string,string> session("","");
+        sessions.push_back(session);
 	}
 }
 
-string Cfg::nextSession(string current) {
-	if (sessions.size() < 1)
-		return current;
-
+pair<string,string> Cfg::nextSession() {
 	currentSession = (currentSession + 1) % sessions.size();
 	return sessions[currentSession];
 }
