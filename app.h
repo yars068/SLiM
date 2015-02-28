@@ -36,6 +36,7 @@ public:
     int GetServerPID();
     void StopServer();
 
+	bool serverStarted;
     // Lock functions
     void GetLock();
     void RemoveLock();
@@ -101,6 +102,8 @@ private:
     
     std::string themeName;
     std::string mcookie;
+
+    const int mcookiesize;
 };
 
 

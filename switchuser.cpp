@@ -9,7 +9,9 @@
    (at your option) any later version.
 */
 
+#include <cstdio>
 #include "switchuser.h"
+#include "util.h"
 
 using namespace std;
 
@@ -53,10 +55,10 @@ void SwitchUser::Execute(const char* cmd) {
 }
 
 void SwitchUser::SetClientAuth(const char* mcookie) {
-    int r;
+    bool r;
     string home = string(Pw->pw_dir);
     string authfile = home + "/.Xauthority";
     remove(authfile.c_str());
-    string cmd = cfg->getOption("xauth_path") + " -q -f " + authfile + " add :0 . " + mcookie;
-    r = system(cmd.c_str());
+    r = Util::add_mcookie(mcookie, ":0", cfg->getOption("xauth_path"),
+      authfile);
 }
