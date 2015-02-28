@@ -1,6 +1,7 @@
 /* SLiM - Simple Login Manager
    Copyright (C) 2004-06 Simone Rota <sip@varlock.com>
    Copyright (C) 2004-06 Johannes Winkelmann <jw@tks6.net>
+   Copyright (C) 2012    Nobuhiro Iwamatsu <iwamatsu@nigauri.org>
       
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,6 +17,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xmu/WinUtil.h>
+#include "log.h"
 
 class Image {
 public:
@@ -61,13 +63,17 @@ public:
 
     Pixmap createPixmap(Display* dpy, int scr, Window win);
 
-
 private:
     int width, height, area;
     unsigned char *rgb_data;
     unsigned char *png_alpha;
 
     int quality_;
+
+    int readJpeg(const char *filename, int *width, int *height,
+        unsigned char **rgb);
+    int readPng(const char *filename, int *width, int *height,
+        unsigned char **rgb, unsigned char **alpha);
 };
 
 #endif
