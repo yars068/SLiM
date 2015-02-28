@@ -8,6 +8,10 @@ CC=/usr/bin/gcc
 CFLAGS=-I. -I/usr/X11R6/include -I/usr/X11R6/include/freetype2 -I/usr/X11R6/include/freetype2/config -I/usr/pkg/include -I/usr/include
 LDFLAGS=-L/usr/X11R6/lib -L/usr/pkg/lib -lXft -lX11 -lfreetype -lXrender -lfontconfig -lpng -lz -lm -lcrypt -lXmu -lpng -ljpeg
 CUSTOM=-DNEEDS_BASENAME
+.ifdef(USE_PAM)
+  LDFLAGS+= -lpam
+  CUSTOM+= -DUSE_PAM
+.endif
 PREFIX=/usr
 CFGDIR=/etc
 MANDIR=/usr/share/man
@@ -15,12 +19,15 @@ DESTDIR=
 #######################################################
 
 NAME=slim
-VERSION=1.2.6
+VERSION=1.3.0
 
 DEFINES=-DPACKAGE=\"$(NAME)\" -DVERSION=\"$(VERSION)\" \
 		-DPKGDATADIR=\"$(PREFIX)/share/slim\" -DSYSCONFDIR=\"$(CFGDIR)\"
 
-OBJECTS=jpeg.o png.o main.o image.o numlock.o cfg.o switchuser.o input.o app.o panel.o
+OBJECTS=jpeg.o png.o main.o image.o numlock.o cfg.o switchuser.o app.o panel.o
+.ifdef USE_PAM
+  OBJECTS+=PAM.o 
+.endif
 
 all: slim
 

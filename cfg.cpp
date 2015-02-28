@@ -13,13 +13,19 @@
 #include <iostream>
 #include <unistd.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+
 #include "cfg.h"
 
 using namespace std;
 
 typedef pair<string,string> option;
 
-Cfg::Cfg() {
+Cfg::Cfg() 
+    : currentSession(-1)
+{
     // Configuration options
     options.insert(option("default_path","./:/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin"));
     options.insert(option("default_xserver","/usr/X11R6/bin/X"));
@@ -34,7 +40,7 @@ Cfg::Cfg() {
     options.insert(option("sessionstart_cmd",""));
     options.insert(option("sessionstop_cmd",""));
     options.insert(option("console_cmd","/usr/X11R6/bin/xterm -C -fg white -bg black +sb -g %dx%d+%d+%d -fn %dx%d -T ""Console login"" -e /bin/sh -c ""/bin/cat /etc/issue; exec /bin/login"""));
-    options.insert(option("screenshot_cmd","import -window root /login.app.png"));
+    options.insert(option("screenshot_cmd","import -window root /slim.png"));
     options.insert(option("welcome_msg","Welcome to %host"));
     options.insert(option("default_user",""));
     options.insert(option("current_theme","default"));
@@ -44,6 +50,7 @@ Cfg::Cfg() {
     options.insert(option("shutdown_msg","The system is halting..."));
     options.insert(option("reboot_msg","The system is rebooting..."));
     options.insert(option("sessions","wmaker,blackbox,icewm"));
+    options.insert(option("sessiondir",""));
     options.insert(option("hidecursor","false"));
 
     // Theme stuff
@@ -105,7 +112,7 @@ Cfg::Cfg() {
 }
 
 Cfg::~Cfg() {
-	options.clear();
+    options.clear();
 }
 /*
  * Creates the Cfg object and parses
@@ -129,6 +136,9 @@ bool Cfg::readConf(string configfile) {
             }
         }
         cfgfile.close();
+
+        fillSessionList();
+
         return true;
     } else {
         error = "Cannot read configuration file: " + configfile;
@@ -211,8 +221,7 @@ int Cfg::absolutepos(const string& position, int max, int width) {
     int n = -1;
     n = position.find("%");
     if (n>0) { // X Position expressed in percentage
-        const char* tmp =  position.substr(0, n).c_str();
-        int result = (max*string2int(tmp)/100) - (width / 2);
+        int result = (max*string2int(position.substr(0, n).c_str())/100) - (width / 2);
         return result < 0 ? 0 : result ;
     } else { // Absolute X position
         return string2int(position.c_str());
@@ -220,33 +229,66 @@ int Cfg::absolutepos(const string& position, int max, int width) {
 }
 
 // split a comma separated string into a vector of strings
-void Cfg::split(vector<string>& v, const string& str, char c) {
+void Cfg::split(vector<string>& v, const string& str, char c, bool useEmpty) {
     v.clear();
     string::const_iterator s = str.begin();
+    string tmp;
     while (true) {
         string::const_iterator begin = s;
         while (*s != c && s != str.end()) { ++s; }
-        v.push_back(string(begin, s));
+    tmp = string(begin, s);
+    if (useEmpty || tmp.size() > 0)
+            v.push_back(tmp);
         if (s == str.end()) {
             break;
         }
         if (++s == str.end()) {
-            v.push_back("");
+        if (useEmpty)
+                v.push_back("");
             break;
         }
     }
 }
 
+void Cfg::fillSessionList(){
+    string strSessionList = getOption("sessions");
+    string strSessionDir  = getOption("sessiondir");
+
+    sessions.clear();
+
+    if( !strSessionDir.empty() ) {
+        DIR *pDir = opendir(strSessionDir.c_str());
+
+        if (pDir != NULL) {
+            struct dirent *pDirent = NULL;
+
+            while ((pDirent = readdir(pDir)) != NULL) {
+                string strFile(strSessionDir);
+                strFile += "/";
+                strFile += pDirent->d_name;
+
+                struct stat oFileStat;
+
+                if (stat(strFile.c_str( ), &oFileStat) == 0){
+                    if (S_ISREG(oFileStat.st_mode) && 
+                        access(strFile.c_str(), R_OK | X_OK) == 0){
+                        sessions.push_back(string(pDirent->d_name));
+                    }
+                }
+            }
+            closedir(pDir);
+        }
+    } 
+
+    if (sessions.empty()){
+        split(sessions, strSessionList, ',', false);
+    }
+}
+
 string Cfg::nextSession(string current) {
-    vector<string> sessions;
-    split(sessions, getOption("sessions"), ',');
-    if (sessions.size() <= 1)
+    if (sessions.size() < 1)
         return current;
 
-    for (int i=0; i<(int)sessions.size()-1; i++) {
-        if (current == sessions[i]) {
-            return sessions[i+1];
-        }
-    }
-    return sessions[0];
+    currentSession = (currentSession + 1) % sessions.size();
+    return sessions[currentSession];
 }
