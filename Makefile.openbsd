@@ -6,8 +6,7 @@
 CXX=/usr/bin/g++
 CC=/usr/bin/gcc
 CFLAGS=-I. -I/usr/X11R6/include -I/usr/X11R6/include/freetype2 -I/usr/X11R6/include/freetype2/config -I/usr/local/include/libpng -I/usr/local/include -I/usr/include
-CXXLAGS=$(CFLAGS)
-LDFLAGS=-L/usr/X11R6/lib -L/usr/local/lib -lXft -lX11 -lfreetype -lXrender -lfontconfig -lpng -lz -lm -lXpm -lXmu -lpng -ljpeg
+LDFLAGS=-L/usr/X11R6/lib -L/usr/local/lib -lXft -lX11 -lfreetype -lXrender -lfontconfig -lpng -lz -lm -lXmu -lpng -ljpeg
 CUSTOM=-DNEEDS_BASENAME
 PREFIX=/usr
 CFGDIR=/etc
@@ -16,12 +15,12 @@ DESTDIR=
 #######################################################
 
 NAME=slim
-VERSION=1.2.5
+VERSION=1.2.6
 
 DEFINES=-DPACKAGE=\"$(NAME)\" -DVERSION=\"$(VERSION)\" \
 		-DPKGDATADIR=\"$(PREFIX)/share/slim\" -DSYSCONFDIR=\"$(CFGDIR)\"
 
-OBJECTS=jpeg.o png.o main.o image.o cfg.o switchuser.o input.o app.o panel.o
+OBJECTS=jpeg.o png.o main.o image.o numlock.o cfg.o switchuser.o input.o app.o panel.o
 
 .SUFFIXES: .c.o .cpp.o
 

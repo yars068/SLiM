@@ -353,8 +353,11 @@ void Image::Crop(const int x, const int y, const int w, const int h) {
     int y2 = y + h;
     unsigned char *new_rgb = (unsigned char *) malloc(3 * w * h);
     memset(new_rgb, 0, 3 * w * h);
-    unsigned char *new_alpha = (unsigned char *) malloc(w * h);
-    memset(new_alpha, 0, w * h);
+    unsigned char *new_alpha = NULL;
+    if (png_alpha != NULL) {
+        new_alpha = (unsigned char *) malloc(w * h);
+        memset(new_alpha, 0, w * h);
+    }
 
     int ipos = 0;
     int opos = 0;
@@ -391,7 +394,7 @@ void Image::Crop(const int x, const int y, const int w, const int h) {
 void Image::Center(const int w, const int h, const char *hex) {
 
     unsigned long packed_rgb;
-    sscanf(hex, "%x", &packed_rgb);  
+    sscanf(hex, "%lx", &packed_rgb);  
 
     unsigned long r = packed_rgb>>16;
     unsigned long g = packed_rgb>>8 & 0xff;
@@ -471,7 +474,7 @@ void Image::Center(const int w, const int h, const char *hex) {
 void Image::Plain(const int w, const int h, const char *hex) {
 
     unsigned long packed_rgb;
-    sscanf(hex, "%x", &packed_rgb);  
+    sscanf(hex, "%lx", &packed_rgb);  
 
     unsigned long r = packed_rgb>>16;
     unsigned long g = packed_rgb>>8 & 0xff;

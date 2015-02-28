@@ -24,7 +24,6 @@
 #include <algorithm>
 #include "app.h"
 #include "numlock.h"
-#include "image.h"
 
 
 extern App* LoginApp;
@@ -113,7 +112,8 @@ void App::Run() {
 #endif
 
     // Read configuration and theme
-    cfg.readConf(CFGFILE);
+    cfg = new Cfg;
+    cfg->readConf(CFGFILE);
     string themebase = "";
     string themefile = "";
     string themedir = "";
@@ -122,7 +122,7 @@ void App::Run() {
         themeName = testtheme;
     } else {
         themebase = string(THEMESDIR) + "/";
-        themeName = cfg.getOption("current_theme");
+        themeName = cfg->getOption("current_theme");
         string::size_type pos;
         if ((pos = themeName.find(",")) != string::npos) {
             // input is a set
@@ -137,7 +137,7 @@ void App::Run() {
     while (!loaded) {
         themedir =  themebase + themeName;
         themefile = themedir + THEMESFILE;
-        if (!cfg.readConf(themefile)) {
+        if (!cfg->readConf(themefile)) {
             if (themeName == "default") {
                 cerr << APPNAME << ": Failed to open default theme file "
                      << themefile << endl;
@@ -170,7 +170,7 @@ void App::Run() {
 #ifndef XNEST_DEBUG
         OpenLog();
 		
-		if (cfg.getOption("daemon") == "yes") {
+		if (cfg->getOption("daemon") == "yes") {
 			daemonmode = true;
 		}
 
@@ -180,6 +180,7 @@ void App::Run() {
                 cerr << APPNAME << ": " << strerror(errno) << endl;
                 exit(ERR_EXIT);
             }
+            UpdatePid();
         }
 
         CreateServerAuth();
@@ -215,7 +216,7 @@ void App::Run() {
     HideCursor();
 
     // Create panel
-    LoginPanel = new Panel(Dpy, Scr, Root, &cfg, themedir);
+    LoginPanel = new Panel(Dpy, Scr, Root, cfg, themedir);
 
     // Start looping
     XEvent event;
@@ -240,8 +241,8 @@ void App::Run() {
 
         Action = WAIT;
         LoginPanel->GetInput()->Reset();
-        if (firstloop && cfg.getOption("default_user") != "") {
-            LoginPanel->GetInput()->SetName(cfg.getOption("default_user") );
+        if (firstloop && cfg->getOption("default_user") != "") {
+            LoginPanel->GetInput()->SetName(cfg->getOption("default_user") );
             firstloop = false;
         }
 
@@ -293,7 +294,7 @@ int App::GetServerPID() {
 
 // Hide the cursor
 void App::HideCursor() {
-	if (cfg.getOption("hidecursor") == "true") {
+	if (cfg->getOption("hidecursor") == "true") {
 		XColor		    black;
 		char		    cursordata[1];
 		Pixmap		    cursorpixmap;
@@ -320,12 +321,12 @@ void App::Login() {
     pid = fork();
     if(pid == 0) {
         // Login process starts here
-        SwitchUser Su(pw, &cfg, DisplayName);
+        SwitchUser Su(pw, cfg, DisplayName);
         string session = LoginPanel->getSession();
-        string loginCommand = cfg.getOption("login_cmd");
+        string loginCommand = cfg->getOption("login_cmd");
         replaceVariables(loginCommand, SESSION_VAR, session);
         replaceVariables(loginCommand, THEME_VAR, themeName);
-        string sessStart = cfg.getOption("sessionstart_cmd");
+        string sessStart = cfg->getOption("sessionstart_cmd");
         if (sessStart != "") {
             replaceVariables(sessStart, USER_VAR, pw->pw_name);
             system(sessStart.c_str());
@@ -347,7 +348,7 @@ void App::Login() {
     if (WIFEXITED(status) && WEXITSTATUS(status)) {
         LoginPanel->Message("Failed to execute login command");
     } else {
-         string sessStop = cfg.getOption("sessionstop_cmd");
+         string sessStop = cfg->getOption("sessionstop_cmd");
          if (sessStop != "") {
             replaceVariables(sessStop, USER_VAR, pw->pw_name);
             system(sessStop.c_str());
@@ -382,13 +383,13 @@ void App::Reboot() {
     alarm(0);
 
     // Write message
-    LoginPanel->Message((char*)cfg.getOption("reboot_msg").c_str());
+    LoginPanel->Message((char*)cfg->getOption("reboot_msg").c_str());
     sleep(3);
 
     // Stop server and reboot
     StopServer();
     RemoveLock();
-    system(cfg.getOption("reboot_cmd").c_str());
+    system(cfg->getOption("reboot_cmd").c_str());
     exit(OK_EXIT);
 }
 
@@ -398,19 +399,19 @@ void App::Halt() {
     alarm(0);
 
     // Write message
-    LoginPanel->Message((char*)cfg.getOption("shutdown_msg").c_str());
+    LoginPanel->Message((char*)cfg->getOption("shutdown_msg").c_str());
     sleep(3);
 
     // Stop server and halt
     StopServer();
     RemoveLock();
-    system(cfg.getOption("halt_cmd").c_str());
+    system(cfg->getOption("halt_cmd").c_str());
     exit(OK_EXIT);
 }
 
 void App::Suspend() {
     sleep(1);
-    system(cfg.getOption("suspend_cmd").c_str());
+    system(cfg->getOption("suspend_cmd").c_str());
 }
 
 
@@ -423,7 +424,7 @@ void App::Console() {
     int height = (XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)) - (posy * 2)) / fonty;
 
     // Execute console
-    const char* cmd = cfg.getOption("console_cmd").c_str();
+    const char* cmd = cfg->getOption("console_cmd").c_str();
     char *tmp = new char[strlen(cmd) + 60];
     sprintf(tmp, cmd, width, height, posx, posy, fontx, fonty);
     system(tmp);
@@ -437,10 +438,12 @@ void App::Exit() {
         LoginPanel->Message(testmsg);
         sleep(3);
     } else {
-        delete LoginPanel;
         StopServer();
         RemoveLock();
     }
+    XCloseDisplay(Dpy);
+    delete LoginPanel;
+    delete cfg;
     exit(OK_EXIT);
 }
 
@@ -540,10 +543,10 @@ int App::StartServer() {
 
     static const int MAX_XSERVER_ARGS = 256;
     static char* server[MAX_XSERVER_ARGS+2] = { NULL };
-    server[0] = (char *)cfg.getOption("default_xserver").c_str();
-    string argOption = cfg.getOption("xserver_arguments");
+    server[0] = (char *)cfg->getOption("default_xserver").c_str();
+    string argOption = cfg->getOption("xserver_arguments");
     /* Add mandatory -xauth option */
-    argOption = argOption + " -auth " + cfg.getOption("authfile");
+    argOption = argOption + " -auth " + cfg->getOption("authfile");
     char* args = new char[argOption.length()+2]; // NULL plus vt
     strcpy(args, argOption.c_str());
 
@@ -614,7 +617,7 @@ int App::StartServer() {
         break;
     }
 
-    string numlock = cfg.getOption("numlock");
+    string numlock = cfg->getOption("numlock");
     if (numlock == "on") {
         NumLock::setOn();
     } else if (numlock == "off") {
@@ -707,7 +710,7 @@ void App::blankScreen()
 void App::setBackground(const string& themedir) {
     string filename;
     filename = themedir + "/background.png";
-    Image *image = new Image;
+    image = new Image;
     bool loaded = image->Read(filename.c_str());
     if (!loaded){ // try jpeg if png failed
         filename = "";
@@ -715,18 +718,18 @@ void App::setBackground(const string& themedir) {
         loaded = image->Read(filename.c_str());
     }
     if (loaded) {
-        string bgstyle = cfg.getOption("background_style");
+        string bgstyle = cfg->getOption("background_style");
         if (bgstyle == "stretch") {
             image->Resize(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)), XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
         } else if (bgstyle == "tile") {
             image->Tile(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)), XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)));
         } else if (bgstyle == "center") {
-    	    string hexvalue = cfg.getOption("background_color");
+    	    string hexvalue = cfg->getOption("background_color");
             hexvalue = hexvalue.substr(1,6);
     	    image->Center(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)), XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)),
         			    hexvalue.c_str());
         } else { // plain color or error
-    	    string hexvalue = cfg.getOption("background_color");
+    	    string hexvalue = cfg->getOption("background_color");
             hexvalue = hexvalue.substr(1,6);
     	    image->Center(XWidthOfScreen(ScreenOfDisplay(Dpy, Scr)), XHeightOfScreen(ScreenOfDisplay(Dpy, Scr)),
         			    hexvalue.c_str());
@@ -735,18 +738,19 @@ void App::setBackground(const string& themedir) {
         XSetWindowBackgroundPixmap(Dpy, Root, p);
     }
     XClearWindow(Dpy, Root);
-
+    
     XFlush(Dpy);
+    delete image;
 }
 
 // Check if there is a lockfile and a corresponding process
 void App::GetLock() {
-    std::ifstream lockfile(cfg.getOption("lockfile").c_str());
+    std::ifstream lockfile(cfg->getOption("lockfile").c_str());
     if (!lockfile) {
         // no lockfile present, create one
-        std::ofstream lockfile(cfg.getOption("lockfile").c_str(), ios_base::out);
+        std::ofstream lockfile(cfg->getOption("lockfile").c_str(), ios_base::out);
         if (!lockfile) {
-            cerr << APPNAME << ": Could not create lock file: " << cfg.getOption("lockfile").c_str() << std::endl;
+            cerr << APPNAME << ": Could not create lock file: " << cfg->getOption("lockfile").c_str() << std::endl;
             exit(ERR_EXIT);
         }
         lockfile << getpid() << std::endl;
@@ -764,9 +768,9 @@ void App::GetLock() {
                 exit(0);
             } else {
                 cerr << APPNAME << ": Stale lockfile found, removing it" << std::endl;
-                std::ofstream lockfile(cfg.getOption("lockfile").c_str(), ios_base::out);
+                std::ofstream lockfile(cfg->getOption("lockfile").c_str(), ios_base::out);
                 if (!lockfile) {
-                    cerr << APPNAME << ": Could not create new lock file: " << cfg.getOption("lockfile") << std::endl;
+                    cerr << APPNAME << ": Could not create new lock file: " << cfg->getOption("lockfile") << std::endl;
                     exit(ERR_EXIT);
                 }
                 lockfile << getpid() << std::endl;
@@ -778,21 +782,21 @@ void App::GetLock() {
 
 // Remove lockfile and close logs
 void App::RemoveLock() {
-    remove(cfg.getOption("lockfile").c_str());
+    remove(cfg->getOption("lockfile").c_str());
 }
 
 // Redirect stdout and stderr to log file
 void App::OpenLog() {
-    FILE *log = fopen (cfg.getOption("logfile").c_str(),"a");
+    FILE *log = fopen (cfg->getOption("logfile").c_str(),"a");
     if (!log) {
-        cerr <<  APPNAME << ": Could not accesss log file: " << cfg.getOption("logfile") << endl;
+        cerr <<  APPNAME << ": Could not accesss log file: " << cfg->getOption("logfile") << endl;
         RemoveLock();
         exit(ERR_EXIT);
     }
     fclose(log);
-    freopen (cfg.getOption("logfile").c_str(),"a",stdout);
+    freopen (cfg->getOption("logfile").c_str(),"a",stdout);
     setvbuf(stdout, NULL, _IOLBF, BUFSIZ);
-    freopen (cfg.getOption("logfile").c_str(),"a",stderr);
+    freopen (cfg->getOption("logfile").c_str(),"a",stderr);
     setvbuf(stderr, NULL, _IONBF, BUFSIZ);
 }
 
@@ -868,10 +872,10 @@ void App::CreateServerAuth() {
         }
         mcookie[31] = digits[r];
 	/* reinitialize auth file */
-	authfile = cfg.getOption("authfile");
+	authfile = cfg->getOption("authfile");
 	remove(authfile.c_str());
         putenv(StrConcat("XAUTHORITY=", authfile.c_str()));
-        cmd = cfg.getOption("xauth_path") + " -q -f " + authfile + " add :0 . " + mcookie;
+        cmd = cfg->getOption("xauth_path") + " -q -f " + authfile + " add :0 . " + mcookie;
         system(cmd.c_str());
 }
 
@@ -880,4 +884,14 @@ char* App::StrConcat(const char* str1, const char* str2) {
     strcpy(tmp, str1);
     strcat(tmp, str2);
     return tmp;
+}
+
+void App::UpdatePid() {
+    std::ofstream lockfile(cfg->getOption("lockfile").c_str(), ios_base::out);
+    if (!lockfile) {
+	    cerr << APPNAME << ": Could not update lock file: " << cfg->getOption("lockfile").c_str() << std::endl;
+	    exit(ERR_EXIT);
+    }
+    lockfile << getpid() << std::endl;
+    lockfile.close();
 }

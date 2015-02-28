@@ -22,6 +22,7 @@
 #include <iostream>
 #include "panel.h"
 #include "cfg.h"
+#include "image.h"
 
 class App {
 public:
@@ -50,6 +51,7 @@ private:
     void HideCursor();
     void CreateServerAuth();
     char* StrConcat(const char* str1, const char* str2);
+    void UpdatePid();
  
     static std::string findValidRandomTheme(const std::string& set);
     static void replaceVariables(std::string& input,
@@ -72,12 +74,12 @@ private:
     // Options
     char* DispName;
 
-    Cfg cfg;
+    Cfg *cfg;
 
-    XpmAttributes BackgroundPixmapAttributes;
     Pixmap BackgroundPixmap;
 
     void blankScreen();
+    Image* image;
     void setBackground(const string& themedir);
 	
     bool daemonmode;
