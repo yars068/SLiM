@@ -1,6 +1,6 @@
 /* SLiM - Simple Login Manager
-   Copyright (C) 2004 Simone Rota <sip@varlock.com>
-   Copyright (C) 2004 Johannes Winkelmann <jw@tks6.net>
+   Copyright (C) 2004-05 Simone Rota <sip@varlock.com>
+   Copyright (C) 2004-05 Johannes Winkelmann <jw@tks6.net>
       
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -53,7 +53,9 @@ public:
     void Merge(Image* background, const int x, const int y);
     void Crop(const int x, const int y, const int w, const int h);
     void Tile(const int w, const int h);
-
+    void Center(const int w, const int h, const char *hex);
+    void Plain(const int w, const int h, const char *hex);
+    
     void computeShift(unsigned long mask, unsigned char &left_shift,
                       unsigned char &right_shift);
 

@@ -1,8 +1,8 @@
 /* SLiM - Simple Login Manager
    Copyright (C) 1997, 1998 Per Liden
-   Copyright (C) 2004 Simone Rota <sip@varlock.com>
-   Copyright (C) 2004 Johannes Winkelmann <jw@tks6.net>
-      
+   Copyright (C) 2004-05 Simone Rota <sip@varlock.com>
+   Copyright (C) 2004-05 Johannes Winkelmann <jw@tks6.net>
+
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation; either version 2 of the License, or
@@ -32,7 +32,7 @@ public:
     void Run();
     int GetServerPID();
     void StopServer();
-    
+
     // Lock functions
     void GetLock();
     void RemoveLock();
@@ -47,18 +47,20 @@ private:
     void ReadConfig();
     void OpenLog();
     void CloseLog();
+    void HideCursor();
 
     // Server functions
     int StartServer();
     int ServerTimeout(int timeout, char *string);
     int WaitForServer();
-    
+
     // Private data
     Window Root;
     Display* Dpy;
     int Scr;
     Panel* LoginPanel;
     int ServerPID;
+    char* DisplayName;
 
     // Options
     char* DispName;
@@ -68,7 +70,13 @@ private:
     XpmAttributes BackgroundPixmapAttributes;
     Pixmap BackgroundPixmap;
 
-    void setBackground();
+    void setBackground(const string& themedir);
+	
+    bool daemonmode;
+	// For testing themes
+	char* testtheme;
+    bool testing;
+
 };
 
 

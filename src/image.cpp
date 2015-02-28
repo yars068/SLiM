@@ -1,6 +1,6 @@
 /* SLiM - Simple Login Manager
-   Copyright (C) 2004 Simone Rota <sip@varlock.com>
-   Copyright (C) 2004 Johannes Winkelmann <jw@tks6.net>
+   Copyright (C) 2004-05 Simone Rota <sip@varlock.com>
+   Copyright (C) 2004-05 Johannes Winkelmann <jw@tks6.net>
       
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -339,11 +339,9 @@ void Image::Tile(const int w, const int h) {
     area = width * height;
     Crop(0,0,w,h);
 
-
 }
 
 /* Crop the image
- * Note that cropping removes transparency
  */
 void Image::Crop(const int x, const int y, const int w, const int h) {
 
@@ -355,6 +353,8 @@ void Image::Crop(const int x, const int y, const int w, const int h) {
     int y2 = y + h;
     unsigned char *new_rgb = (unsigned char *) malloc(3 * w * h);
     memset(new_rgb, 0, 3 * w * h);
+    unsigned char *new_alpha = (unsigned char *) malloc(w * h);
+    memset(new_alpha, 0, w * h);
 
     int ipos = 0;
     int opos = 0;
@@ -365,11 +365,126 @@ void Image::Crop(const int x, const int y, const int w, const int h) {
                 for (int k = 0; k < 3; k++) {
                     new_rgb[3*ipos + k] = static_cast<unsigned char> (rgb_data[3*opos + k]);
                 }
+                if (png_alpha != NULL)
+					new_alpha[ipos] = static_cast<unsigned char> (png_alpha[opos]);
                 ipos++;
             }
             opos++;
         }
+    }
 
+    free(rgb_data);
+    free(png_alpha);
+    rgb_data = new_rgb;
+    if (png_alpha != NULL)
+	    png_alpha = new_alpha;
+    width = w;
+    height = h;
+    area = w * h;
+
+
+}
+
+/* Center the image in a rectangle of given width and height.
+ * Fills the remaining space (if any) with the hex color
+ */
+void Image::Center(const int w, const int h, const char *hex) {
+
+    unsigned long packed_rgb;
+    sscanf(hex, "%x", &packed_rgb);  
+
+    unsigned long r = packed_rgb>>16;
+    unsigned long g = packed_rgb>>8 & 0xff;
+    unsigned long b = packed_rgb & 0xff;    
+
+    unsigned char *new_rgb = (unsigned char *) malloc(3 * w * h);
+    memset(new_rgb, 0, 3 * w * h);
+
+    int x = (w - width) / 2;
+    int y = (h - height) / 2;
+    
+    if (x<0) {
+    	Crop((width - w)/2,0,w,height);
+        x = 0;
+    }
+    if (y<0) {
+    	Crop(0,(height - h)/2,width,h);
+        y = 0;
+    }
+    int x2 = x + width;
+    int y2 = y + height;
+
+    int ipos = 0;
+    int opos = 0;
+    double tmp;
+
+    area = w * h;
+    for (int i = 0; i < area; i++) {
+        new_rgb[3*i] = r;
+        new_rgb[3*i+1] = g;
+        new_rgb[3*i+2] = b;
+    }
+
+	if (png_alpha != NULL) {
+        for (int j = 0; j < h; j++) {
+            for (int i = 0; i < w; i++) {
+                if (j>=y && i>=x && j<y2 && i<x2) {
+            	    ipos = j*w + i;
+                    for (int k = 0; k < 3; k++) {
+	                    tmp = rgb_data[3*opos + k]*png_alpha[opos]/255.0
+                              + new_rgb[k]*(1-png_alpha[opos]/255.0);
+                        new_rgb[3*ipos + k] = static_cast<unsigned char> (tmp);
+                    }
+                    opos++;
+                }
+
+            }
+        }
+    } else {
+        for (int j = 0; j < h; j++) {
+            for (int i = 0; i < w; i++) {
+                if (j>=y && i>=x && j<y2 && i<x2) {
+            	    ipos = j*w + i;
+                    for (int k = 0; k < 3; k++) {
+	                    tmp = rgb_data[3*opos + k];
+                        new_rgb[3*ipos + k] = static_cast<unsigned char> (tmp);
+                    }
+                    opos++;
+                }
+
+            }
+        }
+    }
+    
+    free(rgb_data);
+    free(png_alpha);
+    rgb_data = new_rgb;
+    png_alpha = NULL;
+    width = w;
+    height = h;
+    
+}
+
+/* Fill the image with the given color and adjust its dimensions
+ * to passed values.
+ */
+void Image::Plain(const int w, const int h, const char *hex) {
+
+    unsigned long packed_rgb;
+    sscanf(hex, "%x", &packed_rgb);  
+
+    unsigned long r = packed_rgb>>16;
+    unsigned long g = packed_rgb>>8 & 0xff;
+    unsigned long b = packed_rgb & 0xff;    
+
+    unsigned char *new_rgb = (unsigned char *) malloc(3 * w * h);
+    memset(new_rgb, 0, 3 * w * h);
+
+    area = w * h;
+    for (int i = 0; i < area; i++) {
+        new_rgb[3*i] = r;
+        new_rgb[3*i+1] = g;
+        new_rgb[3*i+2] = b;
     }
 
     free(rgb_data);
@@ -378,9 +493,7 @@ void Image::Crop(const int x, const int y, const int w, const int h) {
     png_alpha = NULL;
     width = w;
     height = h;
-    area = w * h;
-
-
+    
 }
 
 void
