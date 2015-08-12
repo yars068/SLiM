@@ -21,11 +21,12 @@ set(SLIM_VERSION_MINOR "3")
 set(SLIM_VERSION_PATCH "6")
 set(SLIM_VERSION "${SLIM_VERSION_MAJOR}.${SLIM_VERSION_MINOR}.${SLIM_VERSION_PATCH}")
 
-set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation Directory")
-set(PKGDATADIR "${CMAKE_INSTALL_PREFIX}/share/slim")
-set(SYSCONFDIR "/etc")
-set(LIBDIR "/lib")
-set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
+set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Package Installation Directory")
+set(BINDIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Package Binaries Directory")
+set(PKGDATADIR "${CMAKE_INSTALL_PREFIX}/share/slim" CACHE PATH "Package Data Directory")
+set(SYSCONFDIR "/usr/local/etc" CACHE PATH "Package System-Wide Configuration Directory")
+set(LIBDIR "${CMAKE_INSTALL_PREFIX}/lib" CACHE PATH "Package Libraries Directory")
+set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man" CACHE PATH "Package Manpages Directory")
 
 set(SLIM_DEFINITIONS)
 if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD" OR
@@ -41,13 +42,15 @@ set(SLIM_DEFINITIONS ${SLIM_DEFINITIONS} "-DPACKAGE=\"slim\"")
 set(SLIM_DEFINITIONS ${SLIM_DEFINITIONS} "-DVERSION=\"${SLIM_VERSION}\"")
 set(SLIM_DEFINITIONS ${SLIM_DEFINITIONS} "-DPKGDATADIR=\"${PKGDATADIR}\"")
 set(SLIM_DEFINITIONS ${SLIM_DEFINITIONS} "-DSYSCONFDIR=\"${SYSCONFDIR}\"")
+set(SLIM_DEFINITIONS ${SLIM_DEFINITIONS} "-DLIBDIR=\"${LIBDIR}\"")
+set(SLIM_DEFINITIONS ${SLIM_DEFINITIONS} "-DMANDIR=\"${MANDIR}\"")
 
 # Flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -g -O2")
-set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wall -g -O2")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -g -O2" CACHE STRING "C Compiler Flags")
+set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -Wall -g -O2" CACHE STRING "C Pre-processor Flags")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -O2" CACHE STRING "C++ Compiler flags")
 
-# source 
+# Sources 
 set(slim_srcs
 	main.cpp
 	app.cpp
@@ -68,24 +71,32 @@ set(common_srcs
     panel.cpp
     util.cpp
 )
+
+# PAM support
+set(USE_PAM ON CACHE BOOL "Building PAM support")
 if(USE_PAM)
+	message(STATUS "Building PAM support enabled")
 	set(common_srcs ${common_srcs} PAM.cpp)
     # for now, only build slimlock if we are using PAM.
     set(BUILD_SLIMLOCK 1)
+    message(STATUS "Building Slimlock Enabled")
 endif(USE_PAM)
 
 # Build common library
 set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries")
 
 if (BUILD_SHARED_LIBS)
-	message(STATUS "Enable shared library building")
+	message(STATUS "Shared library building enabled")
 	add_library(libslim ${common_srcs})
 else(BUILD_SHARED_LIBS)
-	message(STATUS "Disable shared library building")
+	message(STATUS "Shared library building disabled")
 	add_library(libslim STATIC ${common_srcs})
 endif(BUILD_SHARED_LIBS)
 
+# ConsoleKit support
+set(USE_CONSOLEKIT ON CACHE BOOL "Build with ConsoleKit support")
 if(USE_CONSOLEKIT)
+	message(STATUS "Build ConsoleKit support enabled")
 	set(slim_srcs ${slim_srcs} Ck.cpp)
 endif(USE_CONSOLEKIT)
 
@@ -125,14 +136,11 @@ if(USE_PAM)
 	else(PAM_FOUND)
 		message("\tPAM Not Found")
 	endif(PAM_FOUND)
-else(USE_PAM)
-	message("\tPAM disabled")
 endif(USE_PAM)
 
 # ConsoleKit
 if(USE_CONSOLEKIT)
 	find_package(CkConnector)
-	message("\tConsoleKit Enabled")
 	if(CKCONNECTOR_FOUND)
 		message("\tConsoleKit Found")
 		# DBus check
@@ -150,7 +158,6 @@ if(USE_CONSOLEKIT)
 		endif(DBUS_FOUND)
 	else(CKCONNECTOR_FOUND)
 		message("\tConsoleKit Not Found")
-		message("\tConsoleKit disabled")
 	endif(CKCONNECTOR_FOUND)
 else(USE_CONSOLEKIT)
 	message("\tConsoleKit disabled")
@@ -195,7 +202,7 @@ target_link_libraries(${PROJECT_NAME}
 	${FREETYPE_LIBRARY}
 	${JPEG_LIBRARIES}
 	${PNG_LIBRARIES}
-    libslim
+	libslim
 )
 
 if(BUILD_SLIMLOCK)
@@ -218,30 +225,41 @@ if(BUILD_SLIMLOCK)
     )
 endif(BUILD_SLIMLOCK)
 
-####### install
-# slim
+####### Install
+# SLiM
 install(TARGETS slim RUNTIME DESTINATION bin)
-install(TARGETS slimlock RUNTIME DESTINATION bin)
+if(BUILD_SLIMLOCK)
+    install(TARGETS slimlock RUNTIME DESTINATION bin)
+endif(BUILD_SLIMLOCK)
 
 if (BUILD_SHARED_LIBS)
-	set_target_properties(libslim PROPERTIES
-		OUTPUT_NAME slim
-		SOVERSION ${SLIM_VERSION})
+    set_target_properties(libslim PROPERTIES
+	OUTPUT_NAME slim
+	SOVERSION ${SLIM_VERSION})
 
-	install(TARGETS libslim
-		LIBRARY DESTINATION lib
-		ARCHIVE DESTINATION lib
-	)
+    install(TARGETS libslim
+	    LIBRARY DESTINATION lib
+	    ARCHIVE DESTINATION lib
+    )
 endif (BUILD_SHARED_LIBS)
 
-# man file
+# Manpages:
 install(FILES slim.1 DESTINATION ${MANDIR}/man1/)
-install(FILES slimlock.1 DESTINATION ${MANDIR}/man1/)
-# configure
+if(BUILD_SLIMLOCK)
+    install(FILES slimlock.1 DESTINATION ${MANDIR}/man1/)
+endif(BUILD_SLIMLOCK)
+
+# Configuration file:
 install(FILES slim.conf DESTINATION ${SYSCONFDIR})
+
 # systemd service file
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    set(USE_SYSTEMD NO CACHE BOOL "Use systemd")
+    if(USE_SYSTEMD)
+	message(STATUS "suystemd support enabled")
 	install(FILES slim.service DESTINATION ${LIBDIR}/systemd/system)
+    endif(USE_SYSTEMD)
 endif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+
 # themes directory
 subdirs(themes)
